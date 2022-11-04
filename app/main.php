@@ -2,12 +2,14 @@
 error_reporting(E_ALL);
 
 // You can use print statements as follows for debugging, they'll be visible when running tests.
-echo "Logs from your program will appear here";
+echo "Logs from your program will appear here" . PHP_EOL;
 
 $sock = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
 socket_set_option($sock, SOL_SOCKET, SO_REUSEPORT, 1);
 socket_bind($sock, "localhost", 6379);
 socket_listen($sock, 5);
-socket_accept($sock); // Wait for first client
+$socket = socket_accept($sock);
+$response = "+PONG\r\n";
+socket_write($socket, $response, strlen($response));
 
 socket_close($sock);
