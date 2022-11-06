@@ -1,34 +1,42 @@
 <?php
 error_reporting(E_ALL);
 const PORT = 6379;
-
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 echo "Logs from your program will appear here" . PHP_EOL;
 
-$sock = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
-socket_set_option($sock, SOL_SOCKET, SO_REUSEPORT, 1);
-socket_bind($sock, "localhost", PORT);
-socket_listen($sock, 5);
-$socket = socket_accept($sock);
+$master = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
+socket_set_option($master, SOL_SOCKET, SO_REUSEPORT, 1);
+socket_bind($master, "localhost", PORT);
+socket_listen($master);
 
+$clients = [$master];
 while (true) {
-    $message = socket_read($socket, 2048, PHP_NORMAL_READ);
-    $message = trim($message);
-    if ($message === "") {
-        continue;
-    }
-    if ($message === "exit") {
-        $res = "👋👋👋\r\n";
-        socket_write($socket, $res, strlen($res));
-        break;
-    }
-    if ($message === "ping") {
-        $response = "+PONG\r\n";
-        socket_write($socket, $response, strlen($response));
+    $read = $clients;
+
+    $write = $exp = null;
+    if (socket_select($read, $write, $exp, null) === false) {
         continue;
     }
 
-    echo $message . " is not support command" . PHP_EOL;
+    if (in_array($master, $read)) {
+        $clients[] = socket_accept($master);
+
+        // Q: なぜ master を除外する?
+        $key = array_search($master, $read);
+        unset($read[$key]);
+    }
+
+    foreach ($read as $client) {
+        $content = @socket_read($client, 2048, PHP_NORMAL_READ);
+        if ($content === false) {
+            $key = array_search($client, $clients);
+            unset($clients[$key]);
+        }
+
+        $content = trim($content);
+        var_dump($content);
+        if ($content === "ping") {
+            socket_write($client, "+PONG\r\n");
+        }
+    }
 }
-socket_close($socket);
-socket_close($sock);
