@@ -1,6 +1,36 @@
 <?php
 error_reporting(E_ALL);
 
+class Storage
+{
+    private static self $instance;
+
+    /**
+     * @var array<string, string>
+     */
+    private array $hash;
+
+    private function __construct()
+    {
+        $this->hash = [];
+    }
+
+    public static function getInstance(): self
+    {
+        return static::$instance ?? static::$instance = new static();
+    }
+
+    public function get(string $key): ?string
+    {
+        return $this->hash[$key] ?? null;
+    }
+
+    public function set(string $key, string $value)
+    {
+        $this->hash[$key] = $value;
+    }
+}
+
 class Input
 {
     public string $type;
@@ -109,6 +139,16 @@ function handle($socket, ?Input $input): void
         case "echo":
             socket_write($socket, "+" . $input->array[1] . "\r\n");
             break;
+        case "get":
+            $storage = Storage::getInstance();
+            $ret = $storage->get($input->array[1]);
+            socket_write($socket, "+{$ret}\r\n");
+            break;
+        case "set":
+            $storage = Storage::getInstance();
+            $storage->set($input->array[1], $input->array[2]);
+            socket_write($socket, "+OK\r\n");
+            break;
         default:
             socket_write($socket, "+\r\n");
             break;
@@ -148,6 +188,7 @@ while (true) {
         if (trim($input) === '') {
             continue;
         }
+
         handle($client, Decoder::decodeRESP($input));
     }
 }
