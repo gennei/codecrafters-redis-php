@@ -6,7 +6,7 @@ class Storage
     private static self $instance;
 
     /**
-     * @var array<string, string>
+     * @var array<string, array{value: string, expire: ?DateTimeImmutable}>
      */
     private array $hash;
 
@@ -22,12 +22,28 @@ class Storage
 
     public function get(string $key): ?string
     {
-        return $this->hash[$key] ?? null;
+        $now = new DateTimeImmutable();
+        $obj = $this->hash[$key] ?? null;
+        if ($obj === null) {
+            return null;
+        }
+
+        if ($obj['expire'] === null) {
+            echo "expire not setting" . PHP_EOL;
+            return $obj['value'];
+        } elseif ($obj['expire'] < $now) {
+            return null;
+        }
+        echo "key: {$key} is not expired" . PHP_EOL;
+        return $obj['value'];
     }
 
-    public function set(string $key, string $value)
+    public function set(string $key, string $value, ?DateTimeImmutable $expire)
     {
-        $this->hash[$key] = $value;
+        $this->hash[$key] = [
+            'value' => $value,
+            'expire' => $expire,
+        ];
     }
 }
 
@@ -42,6 +58,31 @@ class Input
         $this->type = $type;
         $this->value = $value;
         $this->array = $array;
+    }
+
+    /**
+     * @return DateTimeImmutable|null
+     * @throws Exception
+     */
+    public function getExpireAt(): ?DateTimeImmutable
+    {
+        if ($this->command() !== 'set') {
+            throw new Exception();
+        }
+
+        $expireAt = new DateTimeImmutable();
+        switch ($this->array[3] ?? null) {
+            case 'ex':
+                $expireAt = $expireAt->modify("+ {$this->array[4]} sec");
+                break;
+            case 'px':
+                $expireAt = $expireAt->modify("+ {$this->array[4]} ms");
+                break;
+            default:
+                $expireAt = null;
+        }
+
+        return $expireAt;
     }
 
     public function command(): string
@@ -130,6 +171,9 @@ class Decoder
     }
 }
 
+/**
+ * @throws Exception
+ */
 function handle($socket, ?Input $input): void
 {
     switch ($input->command()) {
@@ -142,11 +186,12 @@ function handle($socket, ?Input $input): void
         case "get":
             $storage = Storage::getInstance();
             $ret = $storage->get($input->array[1]);
-            socket_write($socket, "+{$ret}\r\n");
+            $res_message = is_null($ret) ? "$-1\r\n" : "+{$ret}\r\n";
+            socket_write($socket, $res_message);
             break;
         case "set":
             $storage = Storage::getInstance();
-            $storage->set($input->array[1], $input->array[2]);
+            $storage->set($input->array[1], $input->array[2], $input->getExpireAt());
             socket_write($socket, "+OK\r\n");
             break;
         default:
