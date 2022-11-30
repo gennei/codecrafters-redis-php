@@ -176,6 +176,7 @@ class Decoder
  */
 function handle($socket, ?Input $input): void
 {
+    echo "command:" . $input->command() . PHP_EOL;
     switch ($input->command()) {
         case "ping":
             socket_write($socket, "+PONG\r\n");
